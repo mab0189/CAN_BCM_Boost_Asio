@@ -25,13 +25,7 @@ CANConnector::CANConnector() : bcmSocket(createBcmSocket()){
 }
 
 CANConnector::~CANConnector(){
-
     CANConnector::stopProcessing();
-
-    // Join the io context threads
-    for(auto& thread: threads) {
-        thread.join();
-    }
 }
 
 /**
@@ -79,22 +73,26 @@ void CANConnector::startProcessing(){
     boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work_guard(ioContext->get_executor());
 
     // Run the io context in its own thread
-    threads.emplace_back(&CANConnector::threads, this);
+    ioContextThread = std::thread(&CANConnector::ioContextThreadFunction,  ioContext);
 }
 
 /**
  * Stops the io context loop.
  */
 void CANConnector::stopProcessing(){
+
+    // Stop the io context loop gracefully and join its thread
     ioContext->stop();
+    ioContextThread.join();
+
     std::cout << "CAN Connector stopped" << std::endl;
 }
 
 /**
  * Thread for the io context.
  */
-void CANConnector::ioContextThread(){
-    ioContext->run();
+void CANConnector::ioContextThreadFunction(boost::shared_ptr<boost::asio::io_context> context){
+    context->run();
 }
 
 /*******************************************************************************

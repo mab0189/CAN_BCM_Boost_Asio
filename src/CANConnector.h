@@ -71,12 +71,12 @@ private:
 
     void startProcessing();
     void stopProcessing();
-    void ioContextThread();
+    static void ioContextThreadFunction(boost::shared_ptr<boost::asio::io_context> context);
 
     // Data members
     boost::shared_ptr<boost::asio::io_context> ioContext;
     boost::asio::generic::datagram_protocol::socket bcmSocket;
-    std::vector<std::thread> threads;
+    std::thread ioContextThread;
 
 };
 
