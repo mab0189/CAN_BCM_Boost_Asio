@@ -24,12 +24,12 @@ class InterfaceIndexIO{
 
 public:
     InterfaceIndexIO(const char* interfaceName);
-    int name();
+    static int name();
     void* data();
     int index();
 
 private:
-    ifreq ifr;
+    ifreq ifr{};
 
 };
 

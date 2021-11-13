@@ -60,8 +60,10 @@ boost::asio::generic::datagram_protocol::socket CANConnector::createBcmSocket() 
     addr.can_ifindex  = interfaceIndexIO.index();
 
     boost::asio::generic::datagram_protocol::endpoint bcmEndpoint{&addr, sizeof(addr)};
-
     socket.connect(bcmEndpoint);
+
+    // Note: In contrast to a raw CAN socket there is no need to
+    // explicitly enable CANFD for an BCM socket with setsockopt!
 
     return socket;
 }
