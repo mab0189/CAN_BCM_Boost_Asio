@@ -25,26 +25,13 @@ CANConnector::CANConnector() : bcmSocket(createBcmSocket()){
 }
 
 CANConnector::~CANConnector(){
+
     CANConnector::stopProcessing();
-}
 
-void CANConnector::startProcessing(){
-
-    std::cout << "CAN Connector starting" << std::endl;
-
-    // Start the work guard. Keeps running even with nothing to process
-    boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work_guard(ioContext->get_executor());
-
-    ioContext->run();
-}
-
-
-void CANConnector::stopProcessing(){
-
-    // Stop the io_context loop
-    ioContext->stop();
-
-    std::cout << "CAN Connector stopped" << std::endl;
+    // Join the io context threads
+    for(auto& thread: threads) {
+        thread.join();
+    }
 }
 
 /**
@@ -77,6 +64,35 @@ boost::asio::generic::datagram_protocol::socket CANConnector::createBcmSocket() 
     socket.connect(bcmEndpoint);
 
     return socket;
+}
+
+/**
+ * Stats the io context loop.
+ */
+void CANConnector::startProcessing(){
+
+    std::cout << "CAN Connector starting" << std::endl;
+
+    // Start the work guard so the io context keeps running when there are no operations to process.
+    boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work_guard(ioContext->get_executor());
+
+    // Run the io context in its own thread
+    threads.emplace_back(&CANConnector::threads, this);
+}
+
+/**
+ * Stops the io context loop.
+ */
+void CANConnector::stopProcessing(){
+    ioContext->stop();
+    std::cout << "CAN Connector stopped" << std::endl;
+}
+
+/**
+ * Thread for the io context.
+ */
+void CANConnector::ioContextThread(){
+    ioContext->run();
 }
 
 /*******************************************************************************

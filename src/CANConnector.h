@@ -19,6 +19,7 @@
 #include "CANConnectorConfig.h"
 
 // System includes
+#include <thread>
 #include <iostream>
 #include <linux/can.h>
 #include <linux/can/bcm.h>
@@ -67,12 +68,15 @@ public:
 private:
     // Function members
     boost::asio::generic::datagram_protocol::socket createBcmSocket();
+
     void startProcessing();
     void stopProcessing();
+    void ioContextThread();
 
     // Data members
     boost::shared_ptr<boost::asio::io_context> ioContext;
     boost::asio::generic::datagram_protocol::socket bcmSocket;
+    std::vector<std::thread> threads;
 
 };
 

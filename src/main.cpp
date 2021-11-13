@@ -1,13 +1,33 @@
+/*******************************************************************************
+ \project   INFM_HIL_Interface
+ \file      main.cpp
+ \brief     The main function.
+ \author    Matthias Bank
+ \version   1.0.0
+ \date      12.11.2021
+ ******************************************************************************/
+
+
+/*******************************************************************************
+ * INCLUDES
+ ******************************************************************************/
 #include "CANConnector.h"
 #include <iostream>
 
-int main() {
-    std::cout << "Hello from main" << std::endl;
 
+/*******************************************************************************
+ * FUNCTION DEFINITIONS
+ ******************************************************************************/
+int main() {
+
+    std::cout << "Hello from main!" << std::endl;
+
+    // Create a CAN connector
     CANConnector myConnector;
 
+    // Let the CAN connector run for a few seconds
     std::this_thread::sleep_for(std::chrono::seconds(5));
 
-
+    // Reaching the end of main will call the deconstructor of the CAN connector
     return 0;
 }
