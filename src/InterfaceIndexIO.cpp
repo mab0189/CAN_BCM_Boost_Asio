@@ -48,7 +48,7 @@ void* InterfaceIndexIO::data(){
  *
  * @return The interface index
  */
-int InterfaceIndexIO::index(){
+int InterfaceIndexIO::index() const{
     return ifr.ifr_ifindex;
 }
 

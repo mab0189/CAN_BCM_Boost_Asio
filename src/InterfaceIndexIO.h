@@ -23,10 +23,10 @@
 class InterfaceIndexIO{
 
 public:
-    InterfaceIndexIO(const char* interfaceName);
+    explicit InterfaceIndexIO(const char* interfaceName);
     static int name();
     void* data();
-    int index();
+    int index() const;
 
 private:
     ifreq ifr{};

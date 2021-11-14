@@ -25,6 +25,7 @@
 #include <linux/can/bcm.h>
 #include <boost/asio.hpp>
 #include <boost/make_shared.hpp>
+#include <boost/system/error_code.hpp>
 
 
 /*******************************************************************************
@@ -34,7 +35,7 @@
 /**
  * Defines how many frames can be put in a bcmMsgMultipleFrames operation.
  * The socketCAN BCM can send up to 256 CAN frames in a sequence in the case
- * of a cyclic TX task configuration. Check the socketCAN BCM documentation.
+ * of a cyclic TX task configuration. See the socketCAN BCM documentation.
  */
 #define MAXFRAMES 256
 
@@ -44,6 +45,22 @@
  ******************************************************************************/
 
 /**
+ * Struct for a BCM message with a single CAN frame.
+ */
+struct bcmMsgSingleFrameCan{
+    struct bcm_msg_head msg_head;
+    struct can_frame canFrame[1];
+};
+
+/**
+ * Struct for a BCM message with a single CANFD frame.
+ */
+struct bcmMsgSingleFrameCanFD{
+    struct bcm_msg_head msg_head;
+    struct canfd_frame canfdFrame[1];
+};
+
+/**
  * Struct for a BCM message with multiple CAN frames.
  */
 struct bcmMsgMultipleFramesCan{
@@ -51,6 +68,13 @@ struct bcmMsgMultipleFramesCan{
     struct can_frame canFrames[MAXFRAMES];
 };
 
+/**
+* Struct for a BCM message with multiple CANFD frames.
+*/
+struct bcmMsgMultipleFramesCanFD{
+    struct bcm_msg_head msg_head;
+    struct canfd_frame canfdFrames[MAXFRAMES];
+};
 
 /*******************************************************************************
  * CLASS DECLARATIONS
@@ -71,11 +95,17 @@ private:
 
     void startProcessing();
     void stopProcessing();
-    static void ioContextThreadFunction(boost::shared_ptr<boost::asio::io_context> context);
+    void ioContextThreadFunction(const boost::shared_ptr<boost::asio::io_context>& context);
+
+    void receiveOnSocket();
+
+    void handleReceivedData(const bcm_msg_head* head, void* frames, uint32_t nframes, int isCANFD);
+    void handleSendData();
 
     // Data members
     boost::shared_ptr<boost::asio::io_context> ioContext;
     boost::asio::generic::datagram_protocol::socket bcmSocket;
+    std::array<std::uint8_t, sizeof(struct bcmMsgMultipleFramesCanFD)> rxBuffer{0};
     std::thread ioContextThread;
 
 };
