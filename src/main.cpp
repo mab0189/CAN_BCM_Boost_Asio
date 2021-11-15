@@ -25,8 +25,11 @@ int main() {
     // Create a CAN connector
     CANConnector myConnector;
 
+    // Test the connector
+    myConnector.handleSendData();
+
     // Let the CAN connector run for a few seconds
-    std::this_thread::sleep_for(std::chrono::seconds(5));
+    std::this_thread::sleep_for(std::chrono::seconds(20));
 
     // Reaching the end of main will call the deconstructor of the CAN connector
     return 0;
