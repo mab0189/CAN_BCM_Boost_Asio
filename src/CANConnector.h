@@ -88,7 +88,7 @@ public:
     ~CANConnector();
 
     // Data members
-    void handleSendData();
+    void handleSendingData();
 
 private:
     // Function members
@@ -99,11 +99,11 @@ private:
     void ioContextThreadFunction(const boost::shared_ptr<boost::asio::io_context>& context);
 
     void receiveOnSocket();
-    void txSendSingleFrame(struct canfd_frame frame, int isCANFD);
-    void txSendMultipleFrames(struct canfd_frame frames[], int nframes, int isCANFD);
-    void txTest(struct canfd_frame frame);
+    void handleReceivedData(const bcm_msg_head* head, void* frames, uint32_t nframes, bool isCANFD);
 
-    void handleReceivedData(const bcm_msg_head* head, void* frames, uint32_t nframes, int isCANFD);
+    void txSendSingleFrame(struct canfd_frame frame, bool isCANFD);
+    void txSendMultipleFrames(struct canfd_frame frames[], int nframes, bool isCANFD);
+    void createTxSetupSequence(struct canfd_frame frames[], int nframes, uint32_t count, struct bcm_timeval ival1, struct bcm_timeval ival2, bool isCANFD);
 
     // Data members
     boost::shared_ptr<boost::asio::io_context> ioContext;

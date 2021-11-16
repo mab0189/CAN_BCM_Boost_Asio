@@ -190,10 +190,10 @@ void CANConnector::receiveOnSocket(){
 /**
  * Create a non cyclic transmission task for a single CAN/CANFD frame.
  *
- * @param frame   - The frame that should be send
- * @param isCANFD - Flag for CANFD frame
+ * @param frame   - The frame that should be send.
+ * @param isCANFD - Flag for CANFD frame.
  */
-void CANConnector::txSendSingleFrame(struct canfd_frame frame, int isCANFD){
+void CANConnector::txSendSingleFrame(struct canfd_frame frame, bool isCANFD){
 
     // BCM message we are sending with a single CAN or CANFD frame
     std::shared_ptr<void> msg = nullptr;
@@ -239,6 +239,8 @@ void CANConnector::txSendSingleFrame(struct canfd_frame frame, int isCANFD){
     // Note: The TX_SEND operation can only handle exactly one frame!
     bcmSocket.async_send(buffer, [msg](boost::system::error_code errorCode, std::size_t size){
 
+        // Lambda completion function for the async TX_SEND operation
+
         // Check boost asio error code
         if(!errorCode){
             std::cout << "Transmission of TX_SEND completed successfully" << std::endl;
@@ -253,11 +255,11 @@ void CANConnector::txSendSingleFrame(struct canfd_frame frame, int isCANFD){
 /**
  * Create a non cyclic transmission task for multiple CAN/CANFD frames.
  * 
- * @param frames  - The frames that should be send
- * @param nframes - The number of frames that should be send
- * @param isCANFD - Flag for CANFD frames
+ * @param frames  - The frames that should be send.
+ * @param nframes - The number of frames that should be send.
+ * @param isCANFD - Flag for CANFD frames.
  */
-void CANConnector::txSendMultipleFrames(struct canfd_frame frames[], int nframes, int isCANFD){
+void CANConnector::txSendMultipleFrames(struct canfd_frame frames[], int nframes, bool isCANFD){
 
     // Note: The TX_SEND operation can only handle exactly one frame!
     // That's why we should use this wrapper for multiple frames.
@@ -268,22 +270,109 @@ void CANConnector::txSendMultipleFrames(struct canfd_frame frames[], int nframes
 }
 
 /**
+ * Create a cyclic transmission task for one or multiple CAN/CANFD frames.
+ * If more than one frame should be send cyclic the provided sequence of
+ * the frames is kept by the BCM.
+ *
+ * @param frames   - The array of CAN/CANFD frames that should be send cyclic.
+ * @param nframes  - The number of CAN/CANFD frames that should be send cyclic.
+ * @param count    - Number of times the frame is send with the first interval.
+ *                   If count is zero only the second interval is being used.
+ * @param ival1    - First interval.
+ * @param ival2    - Second interval.
+ * @param isCANFD  - Flag for CANFD frames.
+ */
+void CANConnector::createTxSetupSequence(struct canfd_frame frames[], int nframes, uint32_t count,
+                           struct bcm_timeval ival1, struct bcm_timeval ival2, bool isCANFD){
+
+    // BCM message we are sending with a single CAN or CANFD frame
+    std::shared_ptr<void> msg = nullptr;
+    size_t msgSize = 0;
+
+    // Check if we are sending CAN or CANFD frames
+    // and create the according struct
+    if(isCANFD){
+        msgSize = sizeof(struct bcmMsgMultipleFramesCanFD);
+        auto msgCANFD = std::make_shared<bcmMsgMultipleFramesCanFD>();
+        msg = std::reinterpret_pointer_cast<void>(msgCANFD);
+    }else {
+        msgSize = sizeof(struct bcmMsgMultipleFramesCan);
+        auto msgCAN = std::make_shared<bcmMsgMultipleFramesCan>();
+        msg = std::reinterpret_pointer_cast<void>(msgCAN);
+    }
+
+    // Error handling / Sanity check
+    if(msg == nullptr){
+        std::cout << "Error could not make message structure" << std::endl;
+    }
+
+    // Fill out the message
+
+    // Note: By combining the flags SETTIMER and STARTTIMER
+    // the BCM will start sending the messages immediately
+    if(isCANFD){
+        std::shared_ptr<bcmMsgMultipleFramesCanFD> msgCANFD = std::reinterpret_pointer_cast<bcmMsgMultipleFramesCanFD>(msg);
+
+        msgCANFD->msg_head.opcode  = TX_SETUP;
+        msgCANFD->msg_head.flags   = CAN_FD_FRAME | SETTIMER | STARTTIMER;
+        msgCANFD->msg_head.count   = count;
+        msgCANFD->msg_head.ival1   = ival1;
+        msgCANFD->msg_head.ival2   = ival2;
+        msgCANFD->msg_head.nframes = nframes;
+
+        size_t arrSize = sizeof(struct canfd_frame) * nframes;
+        std::memcpy(msgCANFD->canfdFrames, frames, arrSize);
+    }else{
+        std::shared_ptr<bcmMsgMultipleFramesCan> msgCAN = std::reinterpret_pointer_cast<bcmMsgMultipleFramesCan>(msg);
+
+        msgCAN->msg_head.opcode    = TX_SETUP;
+        msgCAN->msg_head.flags     = SETTIMER | STARTTIMER;
+        msgCAN->msg_head.count     = count;
+        msgCAN->msg_head.ival1     = ival1;
+        msgCAN->msg_head.ival2     = ival2;
+        msgCAN->msg_head.nframes   = nframes;
+
+        for(int index = 0; index < nframes; index++){
+            struct can_frame *canFrame = (struct can_frame*) &frames[index];
+            msgCAN->canFrames[index] = *canFrame;
+        }
+    }
+
+    // Note: buffer doesn't accept smart pointers. Need to use a regular pointer.
+    boost::asio::const_buffer buffer = boost::asio::buffer(msg.get(), msgSize);
+
+    bcmSocket.async_send(buffer, [msg](boost::system::error_code errorCode, std::size_t size){
+
+        // Lambda completion function for the async TX_SEND operation
+
+        // Check boost asio error code
+        if(!errorCode){
+            std::cout << "Transmission of TX_SETUP completed successfully" << std::endl;
+        }else{
+            std::cerr << "Transmission of TX_SETUP failed" << std::endl;
+        }
+
+    });
+
+}
+
+/**
  * Decides what to do with the data we received on the socket.
  * TODO: Change frames type to struct canfd[]?
  *
- * @param head    - The received bcm msg head
- * @param frames  - The received CAN or CANFD frames
- * @param nframes - The number of the received frames
- * @param isCANFD - Flag for CANFD frames
+ * @param head    - The received bcm msg head.
+ * @param frames  - The received CAN or CANFD frames.
+ * @param nframes - The number of the received frames.
+ * @param isCANFD - Flag for CANFD frames.
  */
-void CANConnector::handleReceivedData(const bcm_msg_head *head, void *frames, uint32_t nframes, int isCANFD) {
+void CANConnector::handleReceivedData(const bcm_msg_head *head, void *frames, uint32_t nframes, bool isCANFD) {
     std::cout << "Handling the receive" << std::endl;
 }
 
 /**
  * Decides what to do with the data we received from the simulation.
  */
-void CANConnector::handleSendData(){
+void CANConnector::handleSendingData(){
 
     // Test CAN Frame
     struct can_frame canFrame1 = {0};
@@ -362,22 +451,28 @@ void CANConnector::handleSendData(){
     mask.len     = 1;
     mask.data[0] = 0xFF;
 
-    // Test TX_SEND single CAN frame
+    // Test TX_SEND with a single CAN frame
     //for(auto & i : frameArrCAN){
-    //    txSendSingleFrame(i, 0);
+    //    txSendSingleFrame(i, false);
     //}
 
-    // Test TX_SEND single CANFD frames
+    // Test TX_SEND with a single CANFD frames
     //for(auto & i : frameArrCANFD){
-    //    txSendSingleFrame(i, 1);
+    //    txSendSingleFrame(i, true);
     //}
 
-    // Test TX_SEND multiple CAN frames
-    txSendMultipleFrames(frameArrCAN, 2, 0);
+    // Test TX_SEND with multiple CAN frames
+    //txSendMultipleFrames(frameArrCAN, 2, false);
 
-    // Test TX_SEND multiple CANFD frames
-    txSendMultipleFrames(frameArrCANFD, 2, 1);
-    
+    // Test TX_SEND with multiple CANFD frames
+    //txSendMultipleFrames(frameArrCANFD, 2, true);
+
+    // Test TX_SETUP with multiple CAN frames
+    //createTxSetupSequence(frameArrCAN, 2, 3, ival1, ival2, false);
+
+    // Test TX_SETUP with multiple CANFD frames
+    //createTxSetupSequence(frameArrCANFD, 2, 3, ival1, ival2, true);
+
 }
 
 
