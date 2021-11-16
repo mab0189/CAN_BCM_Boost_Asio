@@ -24,7 +24,7 @@ CANConnector::CANConnector() : ioContext(boost::make_shared<boost::asio::io_cont
     // Create the first receive operation
     receiveOnSocket();
 
-    // Start the io context
+    // Start the io context loop
     startProcessing();
 
     std::cout << "CAN Connector created" << std::endl;
@@ -93,7 +93,6 @@ void CANConnector::startProcessing(){
     std::cout << "CAN Connector starting io context loop processing" << std::endl;
 }
 
-
 /**
  * Stops the io context loop.
  */
@@ -104,7 +103,7 @@ void CANConnector::stopProcessing(){
         ioContext->stop();
     }
 
-    // Join the io context thread
+    // Join the io context loop thread
     if(ioContextThread.joinable()){
         ioContextThread.join();
     }else{
@@ -115,7 +114,7 @@ void CANConnector::stopProcessing(){
 }
 
 /**
- * Thread for the io context.
+ * Thread for the io context loop.
  */
 void CANConnector::ioContextThreadFunction(const boost::shared_ptr<boost::asio::io_context>& context){
     context->run();
@@ -189,12 +188,12 @@ void CANConnector::receiveOnSocket(){
 }
 
 /**
- * Create a non cyclic transmission task for a single CAN/FD frame.
+ * Create a non cyclic transmission task for a single CAN/CANFD frame.
  *
- * @param frame
- *
+ * @param frame   - The frame that should be send
+ * @param isCANFD - Flag for CANFD frame
  */
-void CANConnector::txSendSingleFrame(struct canfd_frame frame, int isCANFD) {
+void CANConnector::txSendSingleFrame(struct canfd_frame frame, int isCANFD){
 
     // BCM message we are sending with a single CAN or CANFD frame
     std::shared_ptr<void> msg = nullptr;
@@ -228,18 +227,16 @@ void CANConnector::txSendSingleFrame(struct canfd_frame frame, int isCANFD) {
         std::shared_ptr<bcmMsgSingleFrameCan> msgCAN = std::reinterpret_pointer_cast<bcmMsgSingleFrameCan>(msg);
         msgCAN->msg_head.opcode    = TX_SEND;
         msgCAN->msg_head.nframes   = 1;
-        // TODO make c++ cast
         msgCAN->canFrame[0]        = *((struct can_frame*) &frame);
     }
 
-    // std::array<boost::asio::const_buffer, 2> buffers;
-    // buffers[0] = boost::asio::buffer(&message->head, sizeof(bcm_msg_head));
-    // buffers[1] = boost::asio::buffer(&message->frame, sizeof(can_frame));
-
-    boost::asio::const_buffer buffer = boost::asio::buffer(&msg, msgSize);
+    // Note: buffer doesn't accept smart pointers. Need to use a regular pointer.
+    boost::asio::const_buffer buffer = boost::asio::buffer(msg.get(), msgSize);
 
     // Note: Must guarantee the validity of the argument until the handler is invoked.
     // We guarantee the validity through the lambda capture with and the smart pointer.
+
+    // Note: The TX_SEND operation can only handle exactly one frame!
     bcmSocket.async_send(buffer, [msg](boost::system::error_code errorCode, std::size_t size){
 
         // Check boost asio error code
@@ -254,49 +251,25 @@ void CANConnector::txSendSingleFrame(struct canfd_frame frame, int isCANFD) {
 }
 
 /**
- * Create a non cyclic transmission task for a single CAN/FD frame.
- *
- * @param frame
- *
+ * Create a non cyclic transmission task for multiple CAN/CANFD frames.
+ * 
+ * @param frames  - The frames that should be send
+ * @param nframes - The number of frames that should be send
+ * @param isCANFD - Flag for CANFD frames
  */
-void CANConnector::txTest(struct canfd_frame frame){
+void CANConnector::txSendMultipleFrames(struct canfd_frame *frames, int nframes, int isCANFD){
 
-    auto msgSize  = sizeof(struct bcmMsgSingleFrameCanFD);
-    auto msg = std::make_shared<bcmMsgSingleFrameCanFD>();
-
-    msg->msg_head.opcode  = TX_SEND;
-    msg->msg_head.flags   = CAN_FD_FRAME;
-    msg->msg_head.nframes = 1;
-    msg->canfdFrame[0]    = frame;
-
-    /**
-    std::array<boost::asio::const_buffer, 2> buffer;
-    buffer[0] = boost::asio::buffer(&msg->msg_head, sizeof(bcm_msg_head));
-    buffer[1] = boost::asio::buffer(&msg->canfdFrame, sizeof(canfd_frame));
-    */
-
-    boost::asio::const_buffer buffer = boost::asio::buffer(msg.get(), msgSize);
-
-    bcmSocket.async_send(buffer, [msg](boost::system::error_code errorCode, std::size_t size){
-
-        // Check boost asio error code
-        if(!errorCode){
-            std::cout << "Transmission of TX_SEND TEST completed successfully" << std::endl;
-        }else{
-            std::cerr << "Transmission of TX_SEND TEST failed" << std::endl;
-        }
-
-    });
-
-}
-
-void CANConnector::txSendMultipleFrames(struct canfd_frame *frames, int nframes, int isCANFD) {
+    // Note: The TX_SEND operation can only handle exactly one frame!
+    // Thats why we should use this wrapper for multiple frames. 
+    for(int index = 0; index < nframes; index++){
+        txSendSingleFrame(frames[index], isCANFD);
+    }
 
 }
 
 /**
  * Decides what to do with the data we received on the socket.
- * TODO: Change frames to struct canfd[]?
+ * TODO: Change frames type to struct canfd[]?
  *
  * @param head    - The received bcm msg head
  * @param frames  - The received CAN or CANFD frames
@@ -308,8 +281,7 @@ void CANConnector::handleReceivedData(const bcm_msg_head *head, void *frames, ui
 }
 
 /**
- * Decides what to do with the data we received from the simulation
- *
+ * Decides what to do with the data we received from the simulation.
  */
 void CANConnector::handleSendData(){
 
@@ -347,10 +319,8 @@ void CANConnector::handleSendData(){
     frameCANFD1.data[15] = 0xEF;
 
     // Test TX_SEND
-    //txSendSingleFrame(frameCAN1_fd, 0);
-    //txSendSingleFrame(frameCANFD1, 1);
-    txTest(frameCANFD1);
-
+    txSendSingleFrame(frameCAN1_fd, 0);
+    txSendSingleFrame(frameCANFD1, 1);
 }
 
 
