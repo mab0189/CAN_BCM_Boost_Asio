@@ -257,10 +257,10 @@ void CANConnector::txSendSingleFrame(struct canfd_frame frame, int isCANFD){
  * @param nframes - The number of frames that should be send
  * @param isCANFD - Flag for CANFD frames
  */
-void CANConnector::txSendMultipleFrames(struct canfd_frame *frames, int nframes, int isCANFD){
+void CANConnector::txSendMultipleFrames(struct canfd_frame frames[], int nframes, int isCANFD){
 
     // Note: The TX_SEND operation can only handle exactly one frame!
-    // Thats why we should use this wrapper for multiple frames. 
+    // That's why we should use this wrapper for multiple frames.
     for(int index = 0; index < nframes; index++){
         txSendSingleFrame(frames[index], isCANFD);
     }
@@ -286,41 +286,98 @@ void CANConnector::handleReceivedData(const bcm_msg_head *head, void *frames, ui
 void CANConnector::handleSendData(){
 
     // Test CAN Frame
-    struct can_frame frameCAN1 = {0};
-    frameCAN1.can_id  = 0x111;
-    frameCAN1.can_dlc = 4;
-    frameCAN1.data[0] = 0xDE;
-    frameCAN1.data[1] = 0xAD;
-    frameCAN1.data[2] = 0xBE;
-    frameCAN1.data[3] = 0xEF;
+    struct can_frame canFrame1 = {0};
+    canFrame1.can_id  = 0x123;
+    canFrame1.can_dlc = 4;
+    canFrame1.data[0] = 0xDE;
+    canFrame1.data[1] = 0xAD;
+    canFrame1.data[2] = 0xBE;
+    canFrame1.data[3] = 0xEF;
 
-    struct canfd_frame *frameCAN1_fd_ptr = (struct canfd_frame*) &frameCAN1;
-    struct canfd_frame frameCAN1_fd = *frameCAN1_fd_ptr;
+    struct can_frame canFrame2 = {0};
+    canFrame2.can_id  = 0x345;
+    canFrame2.can_dlc = 3;
+    canFrame2.data[0] = 0xC0;
+    canFrame2.data[1] = 0xFF;
+    canFrame2.data[2] = 0xEE;
+
+    // CANFD frame array containing CAN frames
+    struct canfd_frame frameArrCAN[2];
+    frameArrCAN[0] = *((struct canfd_frame*) &canFrame1);
+    frameArrCAN[1] = *((struct canfd_frame*) &canFrame2);
 
     // Test CANFD Frame
-    struct canfd_frame frameCANFD1 = {0};
-    frameCANFD1.can_id   = 0x222;
-    frameCANFD1.len      = 16;
-    frameCANFD1.data[0]  = 0xDE;
-    frameCANFD1.data[1]  = 0xAD;
-    frameCANFD1.data[2]  = 0xBE;
-    frameCANFD1.data[3]  = 0xEF;
-    frameCANFD1.data[4]  = 0xDE;
-    frameCANFD1.data[5]  = 0xAD;
-    frameCANFD1.data[6]  = 0xBE;
-    frameCANFD1.data[7]  = 0xEF;
-    frameCANFD1.data[8]  = 0xDE;
-    frameCANFD1.data[9]  = 0xAD;
-    frameCANFD1.data[10] = 0xBE;
-    frameCANFD1.data[11] = 0xEF;
-    frameCANFD1.data[12] = 0xDE;
-    frameCANFD1.data[13] = 0xAD;
-    frameCANFD1.data[14] = 0xBE;
-    frameCANFD1.data[15] = 0xEF;
+    struct canfd_frame canfdFrame1 = {0};
+    canfdFrame1.can_id   = 0x567;
+    canfdFrame1.len      = 16;
+    canfdFrame1.data[0]  = 0xDE;
+    canfdFrame1.data[1]  = 0xAD;
+    canfdFrame1.data[2]  = 0xBE;
+    canfdFrame1.data[3]  = 0xEF;
+    canfdFrame1.data[4]  = 0xDE;
+    canfdFrame1.data[5]  = 0xAD;
+    canfdFrame1.data[6]  = 0xBE;
+    canfdFrame1.data[7]  = 0xEF;
+    canfdFrame1.data[8]  = 0xDE;
+    canfdFrame1.data[9]  = 0xAD;
+    canfdFrame1.data[10] = 0xBE;
+    canfdFrame1.data[11] = 0xEF;
+    canfdFrame1.data[12] = 0xDE;
+    canfdFrame1.data[13] = 0xAD;
+    canfdFrame1.data[14] = 0xBE;
+    canfdFrame1.data[15] = 0xEF;
 
-    // Test TX_SEND
-    txSendSingleFrame(frameCAN1_fd, 0);
-    txSendSingleFrame(frameCANFD1, 1);
+    struct canfd_frame canfdFrame2 = {0};
+    canfdFrame2.can_id   = 0x789;
+    canfdFrame2.len      = 12;
+    canfdFrame2.data[0]  = 0xC0;
+    canfdFrame2.data[1]  = 0xFF;
+    canfdFrame2.data[2]  = 0xEE;
+    canfdFrame2.data[3]  = 0xC0;
+    canfdFrame2.data[4]  = 0xFF;
+    canfdFrame2.data[5]  = 0xEE;
+    canfdFrame2.data[6]  = 0xC0;
+    canfdFrame2.data[7]  = 0xFF;
+    canfdFrame2.data[8]  = 0xEE;
+    canfdFrame2.data[9]  = 0xC0;
+    canfdFrame2.data[10] = 0xFF;
+    canfdFrame2.data[11] = 0xEE;
+
+    // CANFD frame array
+    struct canfd_frame frameArrCANFD[2];
+    frameArrCANFD[0] = canfdFrame1;
+    frameArrCANFD[1] = canfdFrame2;
+
+    // Test intervals
+    struct bcm_timeval ival1 = {0};
+    ival1.tv_sec  = 0;
+    ival1.tv_usec = 500;
+
+    struct bcm_timeval ival2 = {0};
+    ival2.tv_sec  = 1;
+    ival2.tv_usec = 0;
+
+    // Test Mask
+    struct canfd_frame mask = {0};
+    mask.len     = 1;
+    mask.data[0] = 0xFF;
+
+    // Test TX_SEND single CAN frame
+    //for(auto & i : frameArrCAN){
+    //    txSendSingleFrame(i, 0);
+    //}
+
+    // Test TX_SEND single CANFD frames
+    //for(auto & i : frameArrCANFD){
+    //    txSendSingleFrame(i, 1);
+    //}
+
+    // Test TX_SEND multiple CAN frames
+    txSendMultipleFrames(frameArrCAN, 2, 0);
+
+    // Test TX_SEND multiple CANFD frames
+    txSendMultipleFrames(frameArrCANFD, 2, 1);
+    
 }
 
 
