@@ -103,7 +103,7 @@ private:
 
     void txSendSingleFrame(struct canfd_frame frame, bool isCANFD);
     void txSendMultipleFrames(struct canfd_frame frames[], int nframes, bool isCANFD);
-    void createTxSetupSequence(struct canfd_frame frames[], int nframes, uint32_t count, struct bcm_timeval ival1, struct bcm_timeval ival2, bool isCANFD);
+    void txSetupSequence(struct canfd_frame frames[], int nframes, uint32_t count, struct bcm_timeval ival1, struct bcm_timeval ival2, bool isCANFD);
 
     // Data members
     boost::shared_ptr<boost::asio::io_context> ioContext;

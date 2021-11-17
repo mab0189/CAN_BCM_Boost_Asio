@@ -282,7 +282,7 @@ void CANConnector::txSendMultipleFrames(struct canfd_frame frames[], int nframes
  * @param ival2    - Second interval.
  * @param isCANFD  - Flag for CANFD frames.
  */
-void CANConnector::createTxSetupSequence(struct canfd_frame frames[], int nframes, uint32_t count,
+void CANConnector::txSetupSequence(struct canfd_frame frames[], int nframes, uint32_t count,
                            struct bcm_timeval ival1, struct bcm_timeval ival2, bool isCANFD){
 
     // BCM message we are sending with a single CAN or CANFD frame
@@ -468,10 +468,10 @@ void CANConnector::handleSendingData(){
     //txSendMultipleFrames(frameArrCANFD, 2, true);
 
     // Test TX_SETUP with multiple CAN frames
-    //createTxSetupSequence(frameArrCAN, 2, 3, ival1, ival2, false);
+    //txSetupSequence(frameArrCAN, 2, 3, ival1, ival2, false);
 
     // Test TX_SETUP with multiple CANFD frames
-    //createTxSetupSequence(frameArrCANFD, 2, 3, ival1, ival2, true);
+    //txSetupSequence(frameArrCANFD, 2, 3, ival1, ival2, true);
 
 }
 
