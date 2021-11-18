@@ -343,13 +343,45 @@ void CANConnector::txSetupSequence(struct canfd_frame frames[], int nframes, uin
 
     bcmSocket.async_send(buffer, [msg](boost::system::error_code errorCode, std::size_t size){
 
-        // Lambda completion function for the async TX_SEND operation
+        // Lambda completion function for the async TX_SETUP operation
 
         // Check boost asio error code
         if(!errorCode){
             std::cout << "Transmission of TX_SETUP completed successfully" << std::endl;
         }else{
             std::cerr << "Transmission of TX_SETUP failed" << std::endl;
+        }
+
+    });
+
+}
+
+/**
+ * Removes a cyclic transmission task for the given CAN ID
+ *
+ * @param canID - The CAN ID of the task that should be removed
+ */
+void CANConnector::txDelete(canid_t canID){
+
+    // BCM message we are sending
+    auto msg = std::make_shared<bcm_msg_head>();
+
+    // Fill out the message
+    msg->opcode = TX_DELETE;
+    msg->can_id = canID;
+
+    // Note: buffer doesn't accept smart pointers. Need to use a regular pointer.
+    boost::asio::const_buffer buffer = boost::asio::buffer(msg.get(), sizeof(bcm_msg_head));
+
+    bcmSocket.async_send(buffer, [msg](boost::system::error_code errorCode, std::size_t size){
+
+        // Lambda completion function for the async TX_DELETE operation
+
+        // Check boost asio error code
+        if(!errorCode){
+            std::cout << "TX_DELETE completed successfully" << std::endl;
+        }else{
+            std::cerr << "TX_DELETE failed" << std::endl;
         }
 
     });
@@ -472,6 +504,11 @@ void CANConnector::handleSendingData(){
 
     // Test TX_SETUP with multiple CANFD frames
     //txSetupSequence(frameArrCANFD, 2, 3, ival1, ival2, true);
+
+    // Test TX_DELETE
+    txSetupSequence(&canfdFrame1, 1, 3, ival1, ival2, true);
+    std::this_thread::sleep_for(std::chrono::seconds(5));
+    txDelete(0x567);
 
 }
 
