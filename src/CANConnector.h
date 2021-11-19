@@ -103,6 +103,8 @@ private:
 
     void txSendSingleFrame(struct canfd_frame frame, bool isCANFD);
     void txSendMultipleFrames(struct canfd_frame frames[], int nframes, bool isCANFD);
+    void txSetupSingleFrame(struct canfd_frame frame, uint32_t count, struct bcm_timeval ival1, struct bcm_timeval ival2, bool isCANFD);
+    void txSetupMultipleFrames(struct canfd_frame frames[], int nframes, uint32_t count[], struct bcm_timeval ival1[], struct bcm_timeval ival2[], bool isCANFD);
     void txSetupSequence(struct canfd_frame frames[], int nframes, uint32_t count, struct bcm_timeval ival1, struct bcm_timeval ival2, bool isCANFD);
     void txDelete(canid_t canID, bool isCANFD);
 
