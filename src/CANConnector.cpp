@@ -41,7 +41,7 @@ CANConnector::~CANConnector(){
 /**
  * Creates the bcmSocket data member.
  *
- * @return The BCM socket
+ * @return The BCM socket.
  */
 boost::asio::generic::datagram_protocol::socket CANConnector::createBcmSocket() {
 
@@ -191,7 +191,7 @@ void CANConnector::receiveOnSocket(){
  * Create a non cyclic transmission task for a single CAN/CANFD frame.
  *
  * @param frame   - The frame that should be send.
- * @param isCANFD - Flag for CANFD frame.
+ * @param isCANFD - Flag for a CANFD frame.
  */
 void CANConnector::txSendSingleFrame(struct canfd_frame frame, bool isCANFD){
 
@@ -219,22 +219,27 @@ void CANConnector::txSendSingleFrame(struct canfd_frame frame, bool isCANFD){
     // Fill out the message
     if(isCANFD){
         std::shared_ptr<bcmMsgSingleFrameCanFD> msgCANFD = std::reinterpret_pointer_cast<bcmMsgSingleFrameCanFD>(msg);
+
         msgCANFD->msg_head.opcode  = TX_SEND;
         msgCANFD->msg_head.flags   = CAN_FD_FRAME;
+        msgCANFD->msg_head.can_id  = frame.can_id;
         msgCANFD->msg_head.nframes = 1;
         msgCANFD->canfdFrame[0]    = frame;
     }else{
         std::shared_ptr<bcmMsgSingleFrameCan> msgCAN = std::reinterpret_pointer_cast<bcmMsgSingleFrameCan>(msg);
+        auto canFrame = (struct can_frame *) &frame;
+
+        msgCAN->msg_head.can_id    = canFrame->can_id;
         msgCAN->msg_head.opcode    = TX_SEND;
         msgCAN->msg_head.nframes   = 1;
-        msgCAN->canFrame[0]        = *((struct can_frame*) &frame);
+        msgCAN->canFrame[0]        = *canFrame;
     }
 
     // Note: buffer doesn't accept smart pointers. Need to use a regular pointer.
     boost::asio::const_buffer buffer = boost::asio::buffer(msg.get(), msgSize);
 
     // Note: Must guarantee the validity of the argument until the handler is invoked.
-    // We guarantee the validity through the lambda capture with and the smart pointer.
+    // We guarantee the validity through the lambda capture of the smart pointer.
 
     // Note: The TX_SEND operation can only handle exactly one frame!
     bcmSocket.async_send(buffer, [msg](boost::system::error_code errorCode, std::size_t size){
@@ -274,6 +279,9 @@ void CANConnector::txSendMultipleFrames(struct canfd_frame frames[], int nframes
  * If more than one frame should be send cyclic the provided sequence of
  * the frames is kept by the BCM.
  *
+ * Note: The cyclic transmission task for the sequence can only be deleted
+ * with the CAN ID that was set in the bcm_msg_head.
+ *
  * @param frames   - The array of CAN/CANFD frames that should be send cyclic.
  * @param nframes  - The number of CAN/CANFD frames that should be send cyclic.
  * @param count    - Number of times the frame is send with the first interval.
@@ -306,15 +314,16 @@ void CANConnector::txSetupSequence(struct canfd_frame frames[], int nframes, uin
         std::cout << "Error could not make message structure" << std::endl;
     }
 
-    // Fill out the message
-
     // Note: By combining the flags SETTIMER and STARTTIMER
     // the BCM will start sending the messages immediately
+
+    // Fill out the message
     if(isCANFD){
         std::shared_ptr<bcmMsgMultipleFramesCanFD> msgCANFD = std::reinterpret_pointer_cast<bcmMsgMultipleFramesCanFD>(msg);
 
         msgCANFD->msg_head.opcode  = TX_SETUP;
         msgCANFD->msg_head.flags   = CAN_FD_FRAME | SETTIMER | STARTTIMER;
+        msgCANFD->msg_head.can_id  = frames[0].can_id;
         msgCANFD->msg_head.count   = count;
         msgCANFD->msg_head.ival1   = ival1;
         msgCANFD->msg_head.ival2   = ival2;
@@ -324,16 +333,18 @@ void CANConnector::txSetupSequence(struct canfd_frame frames[], int nframes, uin
         std::memcpy(msgCANFD->canfdFrames, frames, arrSize);
     }else{
         std::shared_ptr<bcmMsgMultipleFramesCan> msgCAN = std::reinterpret_pointer_cast<bcmMsgMultipleFramesCan>(msg);
+        auto firstCanFrame = (struct can_frame*) &frames[0];
 
         msgCAN->msg_head.opcode    = TX_SETUP;
         msgCAN->msg_head.flags     = SETTIMER | STARTTIMER;
+        msgCAN->msg_head.can_id    = firstCanFrame->can_id;
         msgCAN->msg_head.count     = count;
         msgCAN->msg_head.ival1     = ival1;
         msgCAN->msg_head.ival2     = ival2;
         msgCAN->msg_head.nframes   = nframes;
 
         for(int index = 0; index < nframes; index++){
-            struct can_frame *canFrame = (struct can_frame*) &frames[index];
+            auto canFrame = (struct can_frame*) &frames[index];
             msgCAN->canFrames[index] = *canFrame;
         }
     }
@@ -357,11 +368,14 @@ void CANConnector::txSetupSequence(struct canfd_frame frames[], int nframes, uin
 }
 
 /**
- * Removes a cyclic transmission task for the given CAN ID
+ * Removes a cyclic transmission task for the given CAN ID.
  *
- * @param canID - The CAN ID of the task that should be removed
+ * Note: A cyclic transmission task for a sequence of frames can only
+ * be deleted with the CAN ID that was set in the bcm_msg_head.
+ *
+ * @param canID - The CAN ID of the task that should be removed.
  */
-void CANConnector::txDelete(canid_t canID){
+void CANConnector::txDelete(canid_t canID, bool isCANFD){
 
     // BCM message we are sending
     auto msg = std::make_shared<bcm_msg_head>();
@@ -369,6 +383,10 @@ void CANConnector::txDelete(canid_t canID){
     // Fill out the message
     msg->opcode = TX_DELETE;
     msg->can_id = canID;
+
+    if(isCANFD){
+        msg->flags = CAN_FD_FRAME;
+    }
 
     // Note: buffer doesn't accept smart pointers. Need to use a regular pointer.
     boost::asio::const_buffer buffer = boost::asio::buffer(msg.get(), sizeof(bcm_msg_head));
@@ -485,7 +503,7 @@ void CANConnector::handleSendingData(){
 
     // Test TX_SEND with a single CAN frame
     //for(auto & i : frameArrCAN){
-    //    txSendSingleFrame(i, false);
+    //   txSendSingleFrame(i, false);
     //}
 
     // Test TX_SEND with a single CANFD frames
@@ -505,10 +523,10 @@ void CANConnector::handleSendingData(){
     // Test TX_SETUP with multiple CANFD frames
     //txSetupSequence(frameArrCANFD, 2, 3, ival1, ival2, true);
 
-    // Test TX_DELETE
+    // Test TX_DELETE with a sequence
     txSetupSequence(&canfdFrame1, 1, 3, ival1, ival2, true);
     std::this_thread::sleep_for(std::chrono::seconds(5));
-    txDelete(0x567);
+    txDelete(canfdFrame1.can_id, true);
 
 }
 
