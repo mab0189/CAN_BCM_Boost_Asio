@@ -29,7 +29,7 @@ int main() {
     myConnector.handleSendingData();
 
     // Let the CAN connector run for a few seconds
-    std::this_thread::sleep_for(std::chrono::seconds(20));
+    std::this_thread::sleep_for(std::chrono::seconds(30));
 
     // Reaching the end of main will call the destructor of the CAN connector
     return 0;

@@ -108,6 +108,10 @@ private:
     void txSetupSequence(struct canfd_frame frames[], int nframes, uint32_t count, struct bcm_timeval ival1, struct bcm_timeval ival2, bool isCANFD);
     void txDelete(canid_t canID, bool isCANFD);
 
+    void rxSetupCanID(canid_t canID, bool isCANFD);
+    void rxSetupMask(canid_t canID, struct canfd_frame mask, bool isCANFD);
+    void rxDelete(canid_t canID, bool isCANFD);
+
     // Data members
     boost::shared_ptr<boost::asio::io_context> ioContext;
     boost::asio::generic::datagram_protocol::socket bcmSocket;

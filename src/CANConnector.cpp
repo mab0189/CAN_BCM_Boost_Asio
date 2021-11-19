@@ -138,7 +138,7 @@ void CANConnector::receiveOnSocket(){
         // Check the error code of the operation
         if(!errorCode){
 
-            std::cout << "CAN Connector received: " << receivedBytes << std::endl;
+            std::cout << "CAN Connector received: " << receivedBytes << " bytes" << std::endl;
 
             // We need to receive at least a whole bcm_msg_head
             if(receivedBytes >= sizeof(bcm_msg_head)){
@@ -229,8 +229,8 @@ void CANConnector::txSendSingleFrame(struct canfd_frame frame, bool isCANFD){
         std::shared_ptr<bcmMsgSingleFrameCan> msgCAN = std::reinterpret_pointer_cast<bcmMsgSingleFrameCan>(msg);
         auto canFrame = (struct can_frame *) &frame;
 
-        msgCAN->msg_head.can_id    = canFrame->can_id;
         msgCAN->msg_head.opcode    = TX_SEND;
+        msgCAN->msg_head.can_id    = canFrame->can_id;
         msgCAN->msg_head.nframes   = 1;
         msgCAN->canFrame[0]        = *canFrame;
     }
@@ -514,6 +514,152 @@ void CANConnector::txDelete(canid_t canID, bool isCANFD){
 }
 
 /**
+ * Creates a RX filter for the given CAN ID.
+ * I. e. we get notified on all received frames with this CAN ID.
+ *
+ * @param canID    - The CAN ID that should be added to the RX filter.
+ * @param isCANFD  - Flag for CANFD frames.
+ */
+void CANConnector::rxSetupCanID(canid_t canID, bool isCANFD){
+
+    // BCM message we are sending
+    auto msg = std::make_shared<bcm_msg_head>();
+
+    // Fill out the message
+    msg->opcode = RX_SETUP;
+    msg->flags  = RX_FILTER_ID;
+    msg->can_id = canID;
+
+    if(isCANFD){
+        msg->flags = msg->flags | CAN_FD_FRAME;
+    }
+
+    // Note: buffer doesn't accept smart pointers. Need to use a regular pointer.
+    boost::asio::const_buffer buffer = boost::asio::buffer(msg.get(), sizeof(bcm_msg_head));
+
+    bcmSocket.async_send(buffer, [msg](boost::system::error_code errorCode, std::size_t size){
+
+        // Lambda completion function for the async RX_SETUP operation
+
+        // Check boost asio error code
+        if(!errorCode){
+            std::cout << "Transmission of RX_SETUP based on a CAN ID completed successfully" << std::endl;
+        }else{
+            std::cerr << "Transmission of RX_SETUP based on a CAN ID failed" << std::endl;
+        }
+
+    });
+
+}
+
+/**
+ * Creates a RX filter for the CAN ID and the relevant bits of the frame.
+ * I. e. we only get notified on changes for the set bits in the mask.
+ *
+ * @param canID    - The CAN ID that should be added to the RX filter.
+ * @param mask     - The mask for the relevant bits of the frame.
+ * @param isCANFD  - Flag for CANFD frames.
+ */
+void CANConnector::rxSetupMask(canid_t canID, struct canfd_frame mask, bool isCANFD){
+
+    // BCM message we are sending with a single CAN or CANFD frame
+    std::shared_ptr<void> msg = nullptr;
+    size_t msgSize = 0;
+
+    // Check if we are sending CAN or CANFD frames
+    // and create the according struct
+    if(isCANFD){
+        msgSize = sizeof(struct bcmMsgSingleFrameCanFD);
+        auto msgCANFD = std::make_shared<bcmMsgSingleFrameCanFD>();
+        msg = std::reinterpret_pointer_cast<void>(msgCANFD);
+    }else {
+        msgSize = sizeof(struct bcmMsgSingleFrameCan);
+        auto msgCAN = std::make_shared<bcmMsgSingleFrameCan>();
+        msg = std::reinterpret_pointer_cast<void>(msgCAN);
+    }
+
+    // Error handling / Sanity check
+    if(msg == nullptr){
+        std::cout << "Error could not make message structure" << std::endl;
+    }
+
+    // Fill out the message
+    if(isCANFD){
+        std::shared_ptr<bcmMsgSingleFrameCanFD> msgCANFD = std::reinterpret_pointer_cast<bcmMsgSingleFrameCanFD>(msg);
+
+        msgCANFD->msg_head.opcode  = RX_SETUP;
+        msgCANFD->msg_head.flags   = CAN_FD_FRAME;
+        msgCANFD->msg_head.can_id  = canID;
+        msgCANFD->msg_head.nframes = 1;
+
+        msgCANFD->canfdFrame[0]    = mask;
+    }else{
+        std::shared_ptr<bcmMsgSingleFrameCan> msgCAN = std::reinterpret_pointer_cast<bcmMsgSingleFrameCan>(msg);
+        auto maskCAN = (struct can_frame*) &mask;
+
+        msgCAN->msg_head.opcode    = RX_SETUP;
+        msgCAN->msg_head.can_id    = canID;
+        msgCAN->msg_head.nframes   = 1;
+
+        msgCAN->canFrame[0]        = *maskCAN;
+    }
+
+    // Note: buffer doesn't accept smart pointers. Need to use a regular pointer.
+    boost::asio::const_buffer buffer = boost::asio::buffer(msg.get(), msgSize);
+
+    bcmSocket.async_send(buffer, [msg](boost::system::error_code errorCode, std::size_t size){
+
+        // Lambda completion function for the async RX_SETUP operation
+
+        // Check boost asio error code
+        if(!errorCode){
+            std::cout << "Transmission of RX_SETUP with mask completed successfully" << std::endl;
+        }else{
+            std::cerr << "Transmission of RX_SETUP with mask failed" << std::endl;
+        }
+
+    });
+}
+
+/**
+ * Removes the RX filter for the given CAN ID.
+ *
+ * @param canID   - The CAN ID that should be removed from the RX filter.
+ * @param isCANFD - Flag for CANFD frames.
+ */
+void CANConnector::rxDelete(canid_t canID, bool isCANFD){
+
+    // BCM message we are sending
+    auto msg = std::make_shared<bcm_msg_head>();
+
+    // Fill out the message
+    msg->opcode = RX_DELETE;;
+    msg->can_id = canID;
+
+    if(isCANFD){
+        msg->flags = CAN_FD_FRAME;
+    }
+
+    // Note: buffer doesn't accept smart pointers. Need to use a regular pointer.
+    boost::asio::const_buffer buffer = boost::asio::buffer(msg.get(), sizeof(bcm_msg_head));
+
+    bcmSocket.async_send(buffer, [msg](boost::system::error_code errorCode, std::size_t size){
+
+        // Lambda completion function for the async TX_DELETE operation
+
+        // Check boost asio error code
+        if(!errorCode){
+            std::cout << "Transmission of RX_DELETE completed successfully" << std::endl;
+        }else{
+            std::cerr << "Transmission of RX_DELETE failed" << std::endl;
+        }
+
+    });
+
+}
+
+
+/**
  * Decides what to do with the data we received on the socket.
  * TODO: Change frames type to struct canfd[]?
  *
@@ -670,6 +816,29 @@ void CANConnector::handleSendingData(){
     //txSetupSequence(&canfdFrame1, 1, 3, ival1, ival2, true);
     //std::this_thread::sleep_for(std::chrono::seconds(5));
     //txDelete(canfdFrame1.can_id, true);
+
+    // Test rxSetupCanID with a CAN frame
+    //rxSetupCanID(0x222, false);
+
+    // Test rxSetupCanID with a CANFD frame
+    //rxSetupCanID(0x333, true);
+
+    // Test rxSetupMask with a CAN frame
+    //rxSetupMask(0x222, mask, false);
+
+    // Test rxSetupMask with a CANFD frame
+    //rxSetupMask(0x333, mask, true);
+
+    // Test rxDelete with a CAN frame
+    //rxSetupCanID(0x222, false);
+    //std::this_thread::sleep_for(std::chrono::seconds(3));
+    //rxDelete(0x222, false);
+
+    // Test rxDelete with a CANFD frame
+    //rxSetupCanID(0x333, true);
+    //std::this_thread::sleep_for(std::chrono::seconds(3));
+    //rxDelete(0x333, true);
+    
 }
 
 
