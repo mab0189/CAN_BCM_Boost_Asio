@@ -297,7 +297,7 @@ void CANConnector::txSetupSingleFrame(struct canfd_frame frame, uint32_t count, 
         msgSize = sizeof(struct bcmMsgSingleFrameCanFD);
         auto msgCANFD = std::make_shared<bcmMsgSingleFrameCanFD>();
         msg = std::reinterpret_pointer_cast<void>(msgCANFD);
-    }else {
+    }else{
         msgSize = sizeof(struct bcmMsgSingleFrameCan);
         auto msgCAN = std::make_shared<bcmMsgSingleFrameCan>();
         msg = std::reinterpret_pointer_cast<void>(msgCAN);
@@ -475,6 +475,103 @@ void CANConnector::txSetupSequence(struct canfd_frame frames[], int nframes, uin
 }
 
 /**
+ * Updates a cyclic transmission task for a CAN/CANFD frame.
+ *
+ * @param frames   - The updated CAN/CANFD frame data.
+ * @param nframes  - The number of CAN/CANFD frames that should be updated.
+ * @param isCANFD  - Flag for CANFD frames.
+ * @param announce - Flag for immediately sending out the changes once will retaining the cycle.
+ */
+void CANConnector::txSetupUpdateSingleFrame(struct canfd_frame frame, bool isCANFD, bool announce){
+
+    // BCM message we are sending with a single CAN or CANFD frame
+    std::shared_ptr<void> msg = nullptr;
+    size_t msgSize = 0;
+
+    // Check if we are sending CAN or CANFD frames
+    // and create the according struct
+    if(isCANFD){
+        msgSize = sizeof(struct bcmMsgSingleFrameCanFD);
+        auto msgCANFD = std::make_shared<bcmMsgSingleFrameCanFD>();
+        msg = std::reinterpret_pointer_cast<void>(msgCANFD);
+    }else{
+        msgSize = sizeof(struct bcmMsgSingleFrameCan);
+        auto msgCAN = std::make_shared<bcmMsgSingleFrameCan>();
+        msg = std::reinterpret_pointer_cast<void>(msgCAN);
+    }
+
+    // Error handling / Sanity check
+    if(msg == nullptr){
+        std::cout << "Error could not make message structure" << std::endl;
+    }
+
+    // Note: By combining the flags SETTIMER and STARTTIMER
+    // the BCM will start sending the messages immediately
+
+    // Fill out the message
+    if(isCANFD){
+        std::shared_ptr<bcmMsgSingleFrameCanFD> msgCANFD = std::reinterpret_pointer_cast<bcmMsgSingleFrameCanFD>(msg);
+
+        msgCANFD->msg_head.opcode  = TX_SETUP;
+        msgCANFD->msg_head.flags   = CAN_FD_FRAME;
+        msgCANFD->msg_head.can_id  = frame.can_id;
+        msgCANFD->msg_head.nframes = 1;
+        msgCANFD->canfdFrame[0]    = frame;
+
+        if(announce){
+            msgCANFD->msg_head.flags = msgCANFD->msg_head.flags | TX_ANNOUNCE;
+        }
+
+    }else{
+        std::shared_ptr<bcmMsgSingleFrameCan> msgCAN = std::reinterpret_pointer_cast<bcmMsgSingleFrameCan>(msg);
+        auto canFrame = (struct can_frame *) &frame;
+
+        msgCAN->msg_head.opcode    = TX_SETUP;
+        msgCAN->msg_head.can_id    = canFrame->can_id;
+        msgCAN->msg_head.nframes   = 1;
+        msgCAN->canFrame[0]        = *canFrame;
+
+        if(announce){
+            msgCAN->msg_head.flags = TX_ANNOUNCE;
+        }
+
+    }
+
+    // Note: buffer doesn't accept smart pointers. Need to use a regular pointer.
+    boost::asio::const_buffer buffer = boost::asio::buffer(msg.get(), msgSize);
+
+    bcmSocket.async_send(buffer, [msg](boost::system::error_code errorCode, std::size_t size){
+
+        // Lambda completion function for the async TX_SETUP operation
+
+        // Check boost asio error code
+        if(!errorCode){
+            std::cout << "Transmission of TX_SETUP update completed successfully" << std::endl;
+        }else{
+            std::cerr << "Transmission of TX_SETUP update failed" << std::endl;
+        }
+
+    });
+
+}
+
+/**
+ * Updates a cyclic transmission task for one or multiple CAN/CANFD frames.
+ *
+ * @param frames   - The array of CAN/CANFD frames with the updated data.
+ * @param nframes  - The number of CAN/CANFD frames that should be updated.
+ * @param isCANFD  - Flag for CANFD frames.
+ * @param announce - Flag for immediately sending out the changes once will retaining the cycle.
+ */
+void CANConnector::txSetupUpdateMultipleFrames(struct canfd_frame frames[], int nframes, bool isCANFD, bool announce){
+
+    for(int index = 0; index < nframes; index++){
+        txSetupUpdateSingleFrame(frames[index], isCANFD, announce);
+    }
+
+}
+
+/**
  * Removes a cyclic transmission task for the given CAN ID.
  *
  * Note: A cyclic transmission task for a sequence of frames can only
@@ -633,7 +730,7 @@ void CANConnector::rxDelete(canid_t canID, bool isCANFD){
     auto msg = std::make_shared<bcm_msg_head>();
 
     // Fill out the message
-    msg->opcode = RX_DELETE;;
+    msg->opcode = RX_DELETE;
     msg->can_id = canID;
 
     if(isCANFD){
@@ -698,6 +795,28 @@ void CANConnector::handleSendingData(){
     frameArrCAN[0] = *((struct canfd_frame*) &canFrame1);
     frameArrCAN[1] = *((struct canfd_frame*) &canFrame2);
 
+    struct can_frame canFrame1Modified = {0};
+    canFrame1Modified.can_id  = 0x123;
+    canFrame1Modified.can_dlc = 4;
+    canFrame1Modified.data[0] = 0xBE;
+    canFrame1Modified.data[1] = 0xEF;
+    canFrame1Modified.data[2] = 0xDE;
+    canFrame1Modified.data[3] = 0xAD;
+
+    struct can_frame canFrame2Modified = {0};
+    canFrame2Modified.can_id  = 0x345;
+    canFrame2Modified.can_dlc = 5;
+    canFrame2Modified.data[0] = 0xC0;
+    canFrame2Modified.data[1] = 0xFF;
+    canFrame2Modified.data[2] = 0xEE;
+    canFrame2Modified.data[3] = 0xFF;
+    canFrame2Modified.data[4] = 0xEE;
+
+    // CANFD frame array containing CAN frames with modified data
+    struct canfd_frame frameArrCANModified[2];
+    frameArrCANModified[0] = *((struct canfd_frame*) &canFrame1Modified);
+    frameArrCANModified[1] = *((struct canfd_frame*) &canFrame2Modified);
+
     // Test CANFD Frame
     struct canfd_frame canfdFrame1 = {0};
     canfdFrame1.can_id   = 0x567;
@@ -749,18 +868,26 @@ void CANConnector::handleSendingData(){
     ival2.tv_sec  = 1;
     ival2.tv_usec = 0;
 
+    struct bcm_timeval ivalZero = {0};
+
     struct bcm_timeval ival1Arr[2];
     ival1Arr[0] = ival1;
     ival1Arr[1] = ival2;
+
+    struct bcm_timeval ivalArr1Zero[2];
+    ivalArr1Zero[0] = ivalZero;
+    ivalArr1Zero[1] = ivalZero;
 
     struct bcm_timeval ival2Arr[2];
     ival2Arr[0] = ival2;
     ival2Arr[1] = ival2;
 
-    // Count
+    // Test Counts
     uint32_t countArr[2];
     countArr[0] = 10;
     countArr[1] = 5;
+
+    uint32_t countArrZero[2] = {0};
 
     // Test Mask
     struct canfd_frame mask = {0};
@@ -805,6 +932,18 @@ void CANConnector::handleSendingData(){
     // Test txSetupSequence with multiple CANFD frames
     //txSetupSequence(frameArrCANFD, 2, 3, ival1, ival2, true);
 
+    // Test txSetupUpdate without announce
+    //txSetupMultipleFrames(frameArrCAN, 2, countArrZero, ivalArr1Zero, ival2Arr, false);
+    //sleep(10);
+    //txSetupUpdateMultipleFrames(frameArrCANModified, 2, false, false);
+    //sleep(10);
+
+    // Test txSetupUpdate with announce
+    //txSetupMultipleFrames(frameArrCAN, 2, countArrZero, ivalArr1Zero, ival2Arr,false);
+    //sleep(10);
+    //txSetupUpdateMultipleFrames(frameArrCANModified, 2, false, true);
+    //sleep(10);
+
     // Test txDelete with a canfd transmission task
     //txSetupMultipleFrames(frameArrCANFD, 2, countArr, ival1Arr, ival2Arr, true);
     //std::this_thread::sleep_for(std::chrono::seconds(3));
@@ -838,7 +977,6 @@ void CANConnector::handleSendingData(){
     //rxSetupCanID(0x333, true);
     //std::this_thread::sleep_for(std::chrono::seconds(3));
     //rxDelete(0x333, true);
-    
 }
 
 
