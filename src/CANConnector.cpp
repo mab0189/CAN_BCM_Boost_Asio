@@ -755,10 +755,8 @@ void CANConnector::rxDelete(canid_t canID, bool isCANFD){
 
 }
 
-
 /**
  * Decides what to do with the data we received on the socket.
- * TODO: Change frames type to struct canfd[]?
  *
  * @param head    - The received bcm msg head.
  * @param frames  - The received CAN or CANFD frames.
@@ -766,7 +764,51 @@ void CANConnector::rxDelete(canid_t canID, bool isCANFD){
  * @param isCANFD - Flag for CANFD frames.
  */
 void CANConnector::handleReceivedData(const bcm_msg_head *head, void *frames, uint32_t nframes, bool isCANFD){
-    std::cout << "Handling the receive" << std::endl;
+
+    std::cout << "Handling the received data" << std::endl;
+
+    switch(head->opcode){
+
+        case RX_CHANGED:
+
+            // Simple reception of a CAN/CANFD frame or a content change occurred.
+            // TODO: Implement handling
+            std::cout << "RX_CHANGED is not implemented" << std::endl;
+            break;
+
+        case RX_TIMEOUT:
+
+            // Cyclic message is detected to be absent.
+            // TODO: Implement handling
+            std::cout << "RX_TIMEOUT is not implemented" << std::endl;
+            break;
+
+        case TX_EXPIRED:
+
+            // Notification when counter finishes sending at ival1 interval.
+            // Requires TX_COUNTEVT flag to be set at TX_SETUP.
+            std::cerr << "TX_EXPIRED is not implemented" << std::endl;
+            break;
+
+        case RX_STATUS:
+
+            // Reply to a RX_READ request that returns the RX content filter properties for a given CAN ID.
+            // This should not occur on a regular receive.
+            std::cerr << "Received unexpected RX_STATUS message" << std::endl;
+            break;
+
+        case TX_STATUS:
+
+            // Reply to a TX_READ request that returns the TX transmission properties for a given CAN ID.
+            // This should not occur on a regular receive.
+            std::cerr << "Received unexpected TX_STATUS message" << std::endl;
+            break;
+
+        default:
+
+            std::cerr << "Received unkown opcode!" << std::endl;
+    }
+
 }
 
 /**
